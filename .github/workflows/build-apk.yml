@@ -1,3 +1,4 @@
+
 name: Build NEXORA APK
 
 on:
@@ -29,8 +30,8 @@ jobs:
 
       - name: Install Android SDK Components
         run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Find and Extract Project
         run: |
@@ -40,6 +41,8 @@ jobs:
             echo "ERROR: Project ZIP file not found"
             exit 1
           fi
+
+          echo "Found project: $ZIP_FILE"
 
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
@@ -53,6 +56,9 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
+          echo "Project directory: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -60,22 +66,34 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          gradle -p "$PROJECT_DIR" --no-daemon assembleDebug --stacktrace | tee build.log || {
-            echo "=== ROOT CAUSE ==="
-            grep -E "FAILURE:|Caused by:|> Could not|> Failed" build.log | head -n 25
-            exit 1
-          }
+          set -o pipefail
+
+          gradle -p "$PROJECT_DIR" \
+            --no-daemon \
+            assembleDebug \
+            --stacktrace 2>&1 | tee build.log
 
       - name: Find APK Files
         run: |
           mkdir -p final-apk
 
-          find "$PROJECT_DIR" -type f -name "*.apk" -exec cp {} final-apk/ \;
+          find "$PROJECT_DIR" -type f -name "*.apk" \
+            -exec cp {} final-apk/ \;
 
           if [ -z "$(ls -A final-apk)" ]; then
             echo "ERROR: No APK files were generated"
+
+            echo "Checking build outputs:"
+            find "$PROJECT_DIR" -type d -name outputs -print
+
+            echo "Build log:"
+            tail -n 100 build.log
+
             exit 1
           fi
+
+          echo "APK FILES FOUND:"
+          ls -lh final-apk/
 
       - name: Create APK ZIP
         run: |
@@ -87,5 +105,13 @@ jobs:
         with:
           name: NEXORA-APK
           path: NEXORA-APK.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Raw APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXORA-APK-Direct
+          path: final-apk/*.apk
           if-no-files-found: error
           retention-days: 7
