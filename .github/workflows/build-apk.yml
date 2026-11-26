@@ -60,7 +60,11 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          gradle -p "$PROJECT_DIR" --no-daemon assembleDebug --stacktrace
+          gradle -p "$PROJECT_DIR" --no-daemon assembleDebug --stacktrace | tee build.log || {
+            echo "=== ROOT CAUSE ==="
+            grep -E "FAILURE:|Caused by:|> Could not|> Failed" build.log | head -n 25
+            exit 1
+          }
 
       - name: Find APK Files
         run: |
